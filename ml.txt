@@ -1,0 +1,290 @@
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib
+import os
+from shutil import copyfile
+import matplotlib.pyplot as plt
+import image
+
+labels = pd.read_csv('labels.csv')
+
+labels_dict = {i:j for i,j in zip(labels['id'],labels['breed'])}
+classes = set(labels_dict.values())
+images = [f for f in os.listdir('Train')]
+
+if  not os.path.exists('training_images'):
+        os.makedirs('training_images')
+
+if  not os.path.exists('validation_images'):
+    os.makedirs('validation_images')
+
+os.chdir('training_images')
+for curClass in classes:    
+    if  not os.path.exists(curClass):
+        os.makedirs(curClass)
+        #os.rmdir(curClass)
+
+os.chdir('../validation_images')
+for curClass in classes:    
+    if  not os.path.exists(curClass):
+        os.makedirs(curClass)
+
+os.chdir('..')
+count = 0 
+destination_directory = 'training_images/'
+for item in images:
+    if count >7999:
+        destination_directory = 'validation_images/'
+    filekey = os.path.splitext(item)[0]
+    if  not os.path.exists(destination_directory+labels_dict[filekey]+'/'+item):
+        copyfile('train/'+item, destination_directory+labels_dict[filekey]+'/'+item)
+    print(labels_dict[filekey])
+    count +=1
+
+img =plt.imread('training_images/afghan_hound/0d5a88f0ab2db8d34b533c69768135e8.jpg') 
+img
+
+import tensorflow
+from keras.preprocessing.image import ImageDataGenerator, array_to_img, img_to_array, load_img
+
+datagen = ImageDataGenerator(
+        rotation_range=50,
+        width_shift_range=0.3,
+        height_shift_range=0.2,
+        shear_range=0.3,
+        zoom_range=0.3,
+        horizontal_flip=True,
+        fill_mode='nearest')
+
+img = load_img('training_images/afghan_hound/0d5a88f0ab2db8d34b533c69768135e8.jpg') 
+x = img_to_array(img)
+x = x.reshape((1,) + x.shape)
+
+i = 0
+for batch in datagen.flow(x, batch_size=1,
+                          save_to_dir='preview', save_prefix='dog_breed', save_format='jpeg'):
+    i += 1
+    if i > 20:
+        break  # otherwise the generator would loop indefinitely
+
+img1=load_img('preview/dog_breed_0_7350.jpeg')
+img1
+
+img2=load_img('preview/dog_breed_0_6799.jpeg')
+img2
+
+img3=load_img('preview/dog_breed_0_887.jpeg')
+img3
+
+from keras.preprocessing.image import ImageDataGenerator
+from keras.models import Sequential
+from keras.layers import Convolution2D
+from keras.layers import MaxPooling2D
+from keras.layers import Flatten
+from keras.layers import Dense
+from keras.layers import Conv2D,Dropout
+from keras.preprocessing.image import ImageDataGenerator
+
+train_datagen = ImageDataGenerator(
+        rescale=1./255,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True)
+
+test_datagen = ImageDataGenerator(rescale=1./255)
+#check class_mode in keras documentation https://keras.io/preprocessing/image/
+training_set = train_datagen.flow_from_directory(
+        'training_images',
+        target_size=(128, 128),
+        batch_size=20,
+        class_mode='categorical')
+
+test_set = test_datagen.flow_from_directory(
+        'validation_images',
+        target_size=(128, 128),
+        batch_size=20,
+        class_mode='categorical')
+
+from keras.layers import Dropout
+clf = Sequential()
+#Convolution
+#32 is number of kernals of 3x3, we can use 64 128 256 etc in next layers
+#input shape can be 128, 256 later
+clf.add(Conv2D(32,(3,3),input_shape=(128,128,3),activation='relu'))
+#Max Pooling size reduces divided by 2
+clf.add(MaxPooling2D(pool_size=(2,2)))      
+
+
+#clf.add(Dropout(0.5))
+
+clf.add(Conv2D(32,(3,3), activation='relu'))
+clf.add(MaxPooling2D(pool_size=(2,2)))
+#clf.add(Dropout(0.25))
+
+clf.add(Conv2D(64, (3, 3), activation='relu'))
+clf.add(MaxPooling2D(pool_size=(2, 2)))
+#clf.add(Dropout(0.10))
+#Flattening
+clf.add(Flatten())
+        
+#Adding An ANN
+#lets take 128 hidden nodes in hidden layer
+#clf.add(Dense(units=128,activation='relu'))
+clf.add(Dense(units=64, activation='relu'))
+clf.add(Dropout(0.5))
+clf.add(Dense(units=120,activation='softmax'))
+#stochastic gradient descent -Adam -optimizer
+																																																		#loss func categorical cross entropy
+#metrics = accuracy
+clf.compile(optimizer='adam',loss='categorical_crossentropy',metrics=['accuracy'])
+
+
+from keras.callbacks import EarlyStopping
+early_stopping_monitor=EarlyStopping(patience=6)
+
+hist=clf.fit_generator(
+        training_set,
+        steps_per_epoch=400,
+        epochs=50,
+        validation_data=test_set,
+        validation_steps=2222,
+callbacks=[early_stopping_minitor])
+
+import os
+import cv2
+import pandas as pd
+test_set = []
+test_set_ids = []
+for curImage in os.listdir('test'):
+    test_set_ids.append(os.path.splitext(curImage)[0])
+    #print(os.path.splitext(curImage)[0])
+    curImage = cv2.imread('test/'+curImage)
+    test_set.append(cv2.resize(curImage,(128, 128)))
+
+test_set = np.array(test_set, np.float32)/255.0
+
+predictions= clf.predict(test_set)
+
+predictions[0].shape
+
+training_set.class_indices
+
+classes= {index:breed for breed,index in training_set.class_indices.items()}
+column_names = [classes[i] for i in range(120)]
+column_names
+
+predictions_df = pd.DataFrame(predictions)
+predictions_df.columns = column_names
+predictions_df.insert(0,'id', test_set_ids)
+#predictions_df.index = test_set_ids
+predictions_df
+
+predictions_df.to_csv('interim_submission.csv',sep=",")
+
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import os
+from keras.models import Model, Sequential
+from keras.layers import Input, Flatten, Dense, Conv2D, MaxPooling2D, Dropout
+from keras.utils import layer_utils
+from keras import backend as K
+from keras.optimizers import RMSprop, SGD, Adam
+from keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, TensorBoard, CSVLogger
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import log_loss, accuracy_score
+from keras.preprocessing import image
+from keras.applications.resnet50 import ResNet50
+from keras.preprocessing.image import ImageDataGenerator
+import cv2
+import pandas as pd
+import keras
+
+model = ResNet50(weights='imagenet',include_top=False, input_shape=(224, 224, 3))
+
+x = model.output
+x = Flatten()(x)
+x=Dropout(0.35)(x)
+x=Dense(units=1000,activation='relu')(x)
+x=Dropout(0.4)(x)
+x=Dense(units=750,activation='relu')(x)
+x=Dropout(0.4)(x)
+x=Dense(units=1000,activation='relu')(x)
+x=Dropout(0.8)(x)
+#clf.add(Dense(units=120,activation='softmax')
+#stochastic gradient descent -Adam -optimizer
+#loss func categorical cross entropy
+#metrics = accuracy
+#clf.compile(optimizer='adam',loss='categorical_crossentropy',metrics=['accuracy'])
+predictions = Dense(120, activation='softmax')(x)
+
+
+#train only the hidden layers and output layer, donot train the resnet model
+for curLayer in model.layers:
+    curLayer.trainable = False
+    
+main_model.compile(loss='categorical_crossentropy', 
+              optimizer='adam', 
+              metrics=['accuracy'])
+
+callbacks_list = [keras.callbacks.EarlyStopping(monitor='val_acc', patience=3, verbose=1)]
+main_model.summary()
+
+train_datagen = ImageDataGenerator(
+        rescale=1./255,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True)
+
+test_datagen = ImageDataGenerator(rescale=1./255)
+#check class_mode in keras documentation https://keras.io/preprocessing/image/
+training_set = train_datagen.flow_from_directory(
+        '/training_images',
+        target_size=(224, 224),
+        batch_size=20,
+        class_mode='categorical')
+
+test_set = test_datagen.flow_from_directory(
+        '/validation_images',
+        target_size=(224, 224),
+        batch_size=22,
+        class_mode='categorical')
+
+main_model.fit_generator(
+        training_set,
+        steps_per_epoch=400,
+        epochs=25,
+        validation_data=test_set,
+        validation_steps=101,callbacks=callbacks_list)
+
+
+test_set = []
+test_set_ids = []
+for curImage in os.listdir('/test_images'):
+    test_set_ids.append(os.path.splitext(curImage)[0])
+    curImage = cv2.imread('/test_images/'+curImage)
+    test_set.append(cv2.resize(curImage,(224, 224)))
+    
+test_set = np.array(test_set, np.float32)/255.0
+
+predictions= main_model.predict(test_set)
+
+training_set.class_indices
+
+classes= {index:breed for breed,index in training_set.class_indices.items()}
+column_names = [classes[i] for i in range(120)]
+column_names
+
+
+predictions_df = pd.DataFrame(predictions)
+predictions_df.columns = column_names
+predictions_df.insert(0,'id', test_set_ids)
+predictions_df.set_index('id',inplace=True)
+predictions_df
+
+predictions_df.to_csv('/output/third_submission.csv',sep=",")
+
+
+
+
